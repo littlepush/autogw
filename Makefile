@@ -28,39 +28,22 @@ endif
 PECO_NT_DEFINES = $(EX_DEFINES) -I$(INSTALL_INC_ROOT)/utils -I$(INSTALL_INC_ROOT)/cotask -I$(INSTALL_INC_ROOT)/conet -I./
 PECO_NT_CFLAGS = $(EX_FLAGS) -lcotask -lssl -lresolv -lpeutils -lconet
 
-PECO_NT_CGW_CPP_FILES = ./cgw/cgw.cpp
-PECO_NT_CGW_OBJ_FILES = $(PECO_NT_CGW_CPP_FILES:.cpp=.o)
-PECO_NT_RSMS_CPP_FILES = ./rsms/rsms.cpp ./rsms/rsms-protocol.cpp ./rsms/rsms-client.cpp ./rsms/rsms-server.cpp ./rsms/rsms-manager.cpp ./rsms/rsms-jsonstorage.cpp ./rsms/rsms-redisstorage.cpp
-PECO_NT_RSMS_OBJ_FILES = $(PECO_NT_RSMS_CPP_FILES:.cpp=.o)
-PECO_NT_UPSTREAM_CPP_FILES = ./upstream/upstream.cpp
-PECO_NT_UPSTREAM_OBJ_FILES = $(PECO_NT_UPSTREAM_CPP_FILES:.cpp=.o)
+PECO_NT_AUTOGW_CPP_FILES = ./autogw.main.cpp
+PECO_NT_AUTOGW_OBJ_FILES = $(PECO_NT_AUTOGW_CPP_FILES:.cpp=.o)
 
 all : 
 	@mkdir -p bin
-	$(MAKE) cgw 
-	$(MAKE) rsms 
-	$(MAKE) upstream
+	$(MAKE) autogw 
 
 %.o : %.cpp
 	$(CC) $(DEFINES) $(PECO_NT_DEFINES) -c $< -o $@
 
-cgw : $(PECO_NT_CGW_OBJ_FILES)
-	$(CC) -o bin/cgw $^ $(PECO_NT_CFLAGS)
-
-rsms : $(PECO_NT_RSMS_OBJ_FILES)
-	$(CC) -o bin/rsms $^ $(PECO_NT_CFLAGS)
-
-upstream : $(PECO_NT_UPSTREAM_OBJ_FILES)
-	$(CC) -o bin/upstream $^ $(PECO_NT_CFLAGS)
+autogw : $(PECO_NT_AUTOGW_OBJ_FILES)
+	$(CC) -o bin/autogw $^ $(PECO_NT_CFLAGS)
 
 install : 
-	@mkdir -p /usr/local/var/rsms
-	@rm -rf /usr/local/var/rsms/*
-	@cp -vrf ./rsms/web/* /usr/local/var/rsms/
-	@cp -vrf ./bin/* /usr/local/bin/
+	@cp -vrf ./bin/autogw /usr/local/bin/
 
 clean :
 	@rm -vrf */*.o
-	@rm -vrf bin/cgw
-	@rm -vrf bin/rsms
-	@rm -vrf bin/upstream
+	@rm -vrf bin/autogw
