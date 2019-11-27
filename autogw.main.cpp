@@ -252,8 +252,15 @@ void co_main( int argc, char * argv[] ) {
         net::netadapter *_padapter = NULL;
         auto _pit = g_proxy_cache.find(_opeer.ip);
         if ( _pit != g_proxy_cache.end() ) {
+            ON_DEBUG(
+                std::cout << "* " << _opeer.ip << " will use socks5 " << _pit->second 
+                    << " to build connection" << std::endl;
+            )
             _padapter = new net::socks5adapter(_pit->second);
         } else {
+            ON_DEBUG(
+                std::cout << "* " << _opeer.ip << " will connect directly" << std::endl;
+            )
             _padapter = new net::tcpadapter;
         }
         std::shared_ptr< net::netadapter > _ptr_adapter(_padapter);
