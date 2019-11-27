@@ -104,7 +104,7 @@ void dns_server_handler( net::peer_t in, std::string& idata, net::proto::dns::dn
     auto _qs = net::match_query_server(_d);
     net::ip_t _r = net::get_hostname(_d);
 
-    if ( _qs.second ) {
+    if ( _qs.second && _r.is_valid() ) {
         ON_DEBUG(
             std::cout << "§ " << _d << ": " << _r << " will be route through proxy" << std::endl;
         )
@@ -187,7 +187,7 @@ void co_main( int argc, char * argv[] ) {
     if ( _rdb != 0 ) {
         g_cmdrg->query("SELECT", _rdb);
     }
-    
+
     dns_restore_query_server();
     dns_restore_proxy_cache();
     gw_wait_for_command();
