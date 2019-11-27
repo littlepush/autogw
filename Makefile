@@ -45,5 +45,5 @@ install :
 	@cp -vrf ./bin/autogw /usr/local/bin/
 
 clean :
-	@rm -vrf */*.o
+	@rm -vrf *.o
 	@rm -vrf bin/autogw

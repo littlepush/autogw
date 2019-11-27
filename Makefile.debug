@@ -45,5 +45,5 @@ install :
 	@cp -vrf ./bin/autogwd /usr/local/bin/
 
 clean :
-	@rm -vrf */*.debug-o
+	@rm -vrf *.debug-o
 	@rm -vrf bin/autogwd
