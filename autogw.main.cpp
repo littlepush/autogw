@@ -15,7 +15,8 @@ using namespace pe;
 using namespace pe::co;
 
 // Redis group point
-std::shared_ptr< net::redis::group >    g_rg;
+std::shared_ptr< net::redis::group >            g_rg;
+std::map< net::ip_t, net::peer_t >              g_proxy_cache;
 
 void dns_restore_query_server( ) {
     int _offset = 0;
@@ -37,6 +38,21 @@ void dns_restore_query_server( ) {
     } while ( _offset != 0 );
 }
 
+void dns_restore_proxy_cache( ) {
+    int _offset = 0;
+    do {
+        auto _r = g_rg->query("HSCAN", "proxy_cache", _offset);
+        if ( _r.size() < 2 ) break;
+        _offset = std::stoi(_r[0].content);
+        auto _ps = _r[1].subObjects;
+        for ( size_t i = 0; i < _ps.size(); i += 2 ) {
+            net::ip_t _targetip(_ps[i].content);
+            net::peer_t _proxyserver(_ps[i + 1].content);
+            g_proxy_cache[_targetip] = _proxyserver;
+        }
+    } while ( _offset != 0 );
+}
+
 void gw_wait_for_command() {
     loop::main.do_job([]() {
         while ( this_task::get_task()->status != task_status_stopped ) {
@@ -46,13 +62,23 @@ void gw_wait_for_command() {
             std::string _cmdstr(_r[1].content);
             auto _cmds = utils::split(_cmdstr, "@");
             if ( _cmds[0] == "addqs" ) {
-
+                std::string _domain = _cmds[1];
+                net::peer_t _dsvr(_cmds[2]);
+                net::peer_t _socks5;
+                if ( _cmds.size() == 4 ) {
+                    _socks5 = _cmds[3];
+                }
+                net::set_query_server(_domain, _dsvr, _socks5);
             } else if ( _cmds[0] == "delqs" ) {
-
+                std::string _domain = _cmds[1];
+                net::clear_query_server(_domain);
             } else if ( _cmds[0] == "addip" ) {
-
+                net::ip_t _targetip(_cmds[1]);
+                net::peer_t _socks5(_cmds[2]);
+                g_proxy_cache[_targetip] = _socks5;
             } else if ( _cmds[0] == "delip" ) {
-
+                net::ip_t _targetip(_cmds[1]);
+                g_proxy_cache.erase(_targetip);
             } else {
                 std::cerr << "invalidate command: " << _cmds[0] << std::endl;
             }
@@ -75,13 +101,15 @@ void dns_server_handler( net::peer_t in, std::string& idata, net::proto::dns::dn
     )
     auto _qs = net::match_query_server(_d);
     net::ip_t _r = net::get_hostname(_d);
-    // if ( !_r.is_valid() ) {
 
-    // }
     if ( _qs.second ) {
         ON_DEBUG(
             std::cout << "§ " << _d << ": " << _r << " will be route through proxy" << std::endl;
         )
+        if ( g_proxy_cache.find(_r) == g_proxy_cache.end() ) {
+            g_proxy_cache[_r] = _qs.second;
+            g_rg->query("HSET", "proxy_cache", _r.str(), _qs.second.str());
+        }
     }
 
     rpkt.header->trans_id = _ipkt.header->trans_id;
@@ -117,6 +145,12 @@ void co_main( int argc, char * argv[] ) {
         exit(2);
     }
 
+    auto _gw = net::tcp_factory::server & net::peer_t(_gw_info);
+    if ( _gw.conn_obj == INVALIDATE_SOCKET ) {
+        std::cerr << "failed to listen on " << _gw_info << std::endl;
+        exit(2);
+    }
+
     auto _rinfos = utils::split(_redis_info, ",");
     std::map< std::string, std::string > _rinfom;
     for ( auto & i : _rinfos ) {
@@ -147,6 +181,7 @@ void co_main( int argc, char * argv[] ) {
         g_rg->query("SELECT", _rdb);
     }
     dns_restore_query_server();
+    dns_restore_proxy_cache();
     gw_wait_for_command();
 
     loop::main.do_job(_uso, []() {
@@ -190,6 +225,35 @@ void co_main( int argc, char * argv[] ) {
             net::proto::dns::release_dns_packet(&_rpkt);
         });
     });
+
+    // Start GW
+    _gw += [](net::tcp_factory::item&& incoming) {
+        net::peer_t _opeer;
+
+        #if PZC_TARGET_LINUX
+        struct sockaddr_in _daddr;
+        socklen_t _slen = sizeof(_daddr);
+        int _error = getsockopt( incoming.conn_obj, SOL_IP, SO_ORIGINAL_DST, &_daddr, &_slen );
+        if ( _error ) return;
+        _opeer = _daddr;
+        #endif
+
+        if ( !_opeer ) return;
+
+        // Check the original peer if match any cache
+        net::netadapter *_padapter = NULL;
+        auto _pit = g_proxy_cache.find(_opeer.ip);
+        if ( _pit != g_proxy_cache.end() ) {
+            _padapter = new net::socks5adapter(_pit->second);
+        } else {
+            _padapter = new net::tcpadapter;
+        }
+        std::shared_ptr< net::netadapter > _ptr_adapter(_padapter);
+        if ( ! _ptr_adapter->connect(_opeer.str()) ) return;
+
+        net::tcp_serveradapter _svr_adapter;
+        _svr_adapter.switch_data(_padapter);
+    };
 }
 
 int main( int argc, char * argv[] ) {
