@@ -114,6 +114,7 @@ void dns_server_handler( net::peer_t in, std::string& idata, net::proto::dns::dn
     }
 
     rpkt.header->trans_id = _ipkt.header->trans_id;
+    rpkt.header->is_recursive_available = 1;
     net::proto::dns::set_domain(&rpkt, _d);
     net::proto::dns::set_qtype(&rpkt, net::proto::dns::dns_qtype_host);
     net::proto::dns::set_qclass(&rpkt, net::proto::dns::dns_qclass_in);
