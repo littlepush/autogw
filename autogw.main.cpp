@@ -24,7 +24,9 @@ void dns_restore_query_server( ) {
     do {
         auto _r = g_rg->query("HSCAN", "query_filter", _offset);
         if ( _r.size() < 2 ) break;
-        std::cout << _r << std::endl;
+        ON_DEBUG(
+            std::cout << _r << std::endl;
+        )
         _offset = std::stoi(_r[0].content);
         auto _fs = _r[1].subObjects;
         for ( size_t i = 0; i < _fs.size(); i += 2 ) {
@@ -44,6 +46,9 @@ void dns_restore_proxy_cache( ) {
     do {
         auto _r = g_rg->query("HSCAN", "proxy_cache", _offset);
         if ( _r.size() < 2 ) break;
+        ON_DEBUG(
+            std::cout << _r << std::endl;
+        )
         _offset = std::stoi(_r[0].content);
         auto _ps = _r[1].subObjects;
         for ( size_t i = 0; i < _ps.size(); i += 2 ) {
@@ -188,9 +193,9 @@ void co_main( int argc, char * argv[] ) {
         g_cmdrg->query("SELECT", _rdb);
     }
 
-    dns_restore_query_server();
+    //dns_restore_query_server();
     dns_restore_proxy_cache();
-    gw_wait_for_command();
+    //gw_wait_for_command();
 
     loop::main.do_job(_uso, []() {
         net::udp::listen([](const net::peer_t & iaddr, std::string&& data) {
