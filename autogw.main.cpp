@@ -193,9 +193,9 @@ void co_main( int argc, char * argv[] ) {
         g_cmdrg->query("SELECT", _rdb);
     }
 
-    //dns_restore_query_server();
+    dns_restore_query_server();
     dns_restore_proxy_cache();
-    //gw_wait_for_command();
+    gw_wait_for_command();
 
     loop::main.do_job(_uso, []() {
         net::udp::listen([](const net::peer_t & iaddr, std::string&& data) {
