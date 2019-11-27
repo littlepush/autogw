@@ -58,6 +58,7 @@ void gw_wait_for_command() {
         while ( this_task::get_task()->status != task_status_stopped ) {
             auto _r = g_rg->query("BLPOP", "autogw.command", 0);
             if ( _r.size() != 2 ) continue;
+            if ( _r[0].content == "0" ) continue;
             // Todo
             std::string _cmdstr(_r[1].content);
             auto _cmds = utils::split(_cmdstr, "@");
