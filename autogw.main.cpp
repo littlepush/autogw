@@ -16,6 +16,7 @@ using namespace pe::co;
 
 // Redis group point
 std::shared_ptr< net::redis::group >            g_rg;
+std::shared_ptr< net::redis::group >            g_cmdrg;
 std::map< net::ip_t, net::peer_t >              g_proxy_cache;
 
 void dns_restore_query_server( ) {
@@ -56,7 +57,7 @@ void dns_restore_proxy_cache( ) {
 void gw_wait_for_command() {
     loop::main.do_job([]() {
         while ( this_task::get_task()->status != task_status_stopped ) {
-            auto _r = g_rg->query("BLPOP", "autogw.command", 0);
+            auto _r = g_cmdrg->query("BLPOP", "autogw.command", 0);
             if ( _r.size() != 2 ) continue;
             if ( _r[0].content == "0" ) continue;
             // Todo
@@ -173,7 +174,7 @@ void co_main( int argc, char * argv[] ) {
         _rdb = std::stoi(_rinfom["db"]);
     }
 
-    g_rg = std::make_shared< net::redis::group >(_rsvr, _rpwd, 4);
+    g_rg = std::make_shared< net::redis::group >(_rsvr, _rpwd, 2);
     if ( !g_rg->lowest_load_connector().connection_test() ) {
         std::cerr << "cannot connect to redis server" << std::endl;
         exit(4);
@@ -182,6 +183,11 @@ void co_main( int argc, char * argv[] ) {
         // Change the database
         g_rg->query("SELECT", _rdb);
     }
+    g_cmdrg = std::make_shared< net::redis::group >(_rsvr, _rpwd, 1);
+    if ( _rdb != 0 ) {
+        g_cmdrg->query("SELECT", _rdb);
+    }
+    
     dns_restore_query_server();
     dns_restore_proxy_cache();
     gw_wait_for_command();
