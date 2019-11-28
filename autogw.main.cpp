@@ -18,6 +18,7 @@ using namespace pe::co;
 std::shared_ptr< net::redis::group >            g_rg;
 std::shared_ptr< net::redis::group >            g_cmdrg;
 std::map< net::ip_t, net::peer_t >              g_proxy_cache;
+net::peer_t                                     g_master;
 
 void dns_restore_query_server( ) {
     int _offset = 0;
@@ -71,21 +72,28 @@ void gw_wait_for_command() {
             if ( _cmds[0] == "addqs" ) {
                 std::string _domain = _cmds[1];
                 net::peer_t _dsvr(_cmds[2]);
+                std::string _s = _cmds[2];
                 net::peer_t _socks5;
                 if ( _cmds.size() == 4 ) {
                     _socks5 = _cmds[3];
+                    _s += "@";
+                    _s += _cmds[3];
                 }
                 net::set_query_server(_domain, _dsvr, _socks5);
+                g_rg->query("HSET", "query_filter", _domain, _s);
             } else if ( _cmds[0] == "delqs" ) {
                 std::string _domain = _cmds[1];
                 net::clear_query_server(_domain);
+                g_rg->query("HDEL", "query_filter", _cmds[1]);
             } else if ( _cmds[0] == "addip" ) {
                 net::ip_t _targetip(_cmds[1]);
                 net::peer_t _socks5(_cmds[2]);
                 g_proxy_cache[_targetip] = _socks5;
+                g_rg->query("HSET", "proxy_cache", _cmds[1], _cmds[2]);
             } else if ( _cmds[0] == "delip" ) {
                 net::ip_t _targetip(_cmds[1]);
                 g_proxy_cache.erase(_targetip);
+                g_rg->query("HDEL", "proxy_cache", _cmds[1]);
             } else {
                 std::cerr << "invalidate command: " << _cmds[0] << std::endl;
             }
@@ -93,48 +101,119 @@ void gw_wait_for_command() {
     });
 }
 
-void dns_server_handler( net::peer_t in, std::string& idata, net::proto::dns::dns_packet& rpkt ) {
+std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_tcp ) {
     net::proto::dns::dns_packet _ipkt;
-    _ipkt.packet = &idata[0];
-    _ipkt.length = idata.size();
+    _ipkt.packet = &data[0];
+    _ipkt.length = data.size();
     _ipkt.buflen = 0;
     _ipkt.header = (net::proto::dns::dns_packet_header *)(_ipkt.packet);
     _ipkt.dsize = 0;
 
     net::proto::dns::prepare_for_reading(&_ipkt);
     std::string _d = net::proto::dns::domain(&_ipkt);
+    // Roll back the data
+    net::proto::dns::prepare_for_sending(&_ipkt);
+
     ON_DEBUG(
         std::cout << "-> " << in << ": " << _d << std::endl;
     )
     auto _qs = net::match_query_server(_d);
-    net::ip_t _r = net::get_hostname(_d);
+    net::netadapter *_pradapter = NULL;
 
-    if ( _qs.second && _r.is_valid() ) {
-        ON_DEBUG(
-            std::cout << "§ " << _d << ": " << _r << " will be route through proxy" << std::endl;
-        )
-        if ( g_proxy_cache.find(_r) == g_proxy_cache.end() ) {
-            g_proxy_cache[_r] = _qs.second;
-            g_rg->query("HSET", "proxy_cache", _r.str(), _qs.second.str());
+    bool _add_tcp_length = (force_tcp);
+    net::peer_t _master = g_master;
+
+    if ( _qs.first ) {
+        if ( _qs.second ) {
+            // Redirect as Socks5 on TCP
+            _pradapter = new net::socks5adapter(_qs.second);
+            _add_tcp_length = true;
+        } else {
+            // Redirect to specified DNS server
+            if ( force_tcp ) {
+                _pradapter = new net::tcpadapter;
+            } else {
+                _pradapter = new net::udpadapter;
+            }
+        }
+        _master = _qs.first;
+    } else {
+        // Redirect to the uplevel
+        if ( force_tcp ) {
+            _pradapter = new net::tcpadapter;
+        } else {
+            _pradapter = new net::udpadapter;
         }
     }
 
-    rpkt.header->trans_id = _ipkt.header->trans_id;
-    rpkt.header->is_recursive_available = 1;
-    net::proto::dns::set_domain(&rpkt, _d);
-    net::proto::dns::set_qtype(&rpkt, net::proto::dns::dns_qtype_host);
-    net::proto::dns::set_qclass(&rpkt, net::proto::dns::dns_qclass_in);
-    net::proto::dns::set_ips(&rpkt, std::list<net::ip_t>{_r});
-    net::proto::dns::prepare_for_sending(&rpkt);
+    std::shared_ptr< net::netadapter > _ptr_adapter(_pradapter);
+    if ( !_ptr_adapter->connect(_master.str()) ) return std::string("");
+    if ( _add_tcp_length ) {
+        std::string _ls('\0', sizeof(uint16_t));
+        uint16_t *_pls = (uint16_t *)&_ls[0];
+        *_pls = net::h2n((uint16_t)data.size());
+        _ptr_adapter->write(std::move(_ls));
+    }
+    if ( !_ptr_adapter->write(std::move(data)) ) return std::string("");
+
+    auto _r = _ptr_adapter->read(std::chrono::seconds(3));
+    if ( _r.first != net::op_done ) return std::string("");
+
+    // Just return the response from master if the domain is not match any query filter
+    if ( !_qs.second ) return _r.second;
+
+    net::proto::dns::dns_packet _rpkt;
+    _rpkt.packet = &_r.second[0];
+    _rpkt.buflen = 0;
+    _rpkt.dsize = 0;
+    _rpkt.length = _r.second.size() - sizeof(uint16_t);
+    _rpkt.header = (net::proto::dns::dns_packet_header *)(_ipkt.packet + sizeof(uint16_t));
+
+    std::string _socks5str = _qs.second.str();
+
+    // parse the response and update the cache
+    net::proto::dns::prepare_for_reading( &_rpkt );
+    auto _ips = net::proto::dns::ips( &_rpkt );
+    if ( _ips.size() > 0 ) {
+        for ( auto& ir : _ips ) {
+            if ( g_proxy_cache.find(ir.ip) != g_proxy_cache.end() ) continue;
+            g_proxy_cache[ir.ip] = _qs.second;
+            std::string _ipstr = ir.ip.str();
+            loop::main.do_job([_ipstr, _socks5str]() {
+                g_rg->query("HSET", "proxy_cache", _ipstr, _socks5str);
+            });
+        }
+    }
+    auto _cname = net::proto::dns::cname( &_rpkt );
+    do {
+        if ( _cname.domain.size() == 0 ) break;
+        auto _cqs = net::match_query_server(_cname.domain);
+        if ( _cqs.first ) break;
+        // Make the whole domain in the query filter
+        auto _ds = utils::split(_cname.domain, ".");
+        if ( _ds.size() == 1 ) break;
+        auto _l1 = _ds.rbegin();
+        auto _l2 = _l1 + 1;
+        std::string _fdomain = "." + *_l2 + "." + *_l1;
+        net::set_query_server(_fdomain, _qs.first, _qs.second);
+        std::string _fstring = _qs.first.str() + "@" + _qs.second.str();
+        loop::main.do_job([_fdomain, _fstring]() {
+            g_rg->query("HSET", "query_filter", _fdomain, _fstring);
+        });
+    } while ( false );
+
+    net::proto::dns::prepare_for_sending( &_rpkt );
+    return _r.second;
 }
 
 void co_main( int argc, char * argv[] ) {
-    std::string _listen_info = "0.0.0.0:9902";
     std::string _gw_info = "0.0.0.0:4300";
     std::string _redis_info = "s.127.0.0.1:6379,p.password,db.1";
-    utils::argparser::set_parser("listen", "l", _listen_info);
+    std::string _master = "114.114.114.114";
     utils::argparser::set_parser("redis", "r", _redis_info);
     utils::argparser::set_parser("gateway", "g", _gw_info);
+    utils::argparser::set_parser("master", "m", _master);
+    g_master = _master;
 
     if ( !utils::argparser::parse(argc, argv) ) {
         exit(1);
@@ -201,19 +280,16 @@ void co_main( int argc, char * argv[] ) {
         net::udp::listen([](const net::peer_t & iaddr, std::string&& data) {
 
             loop::main.do_job([iaddr, data]() {
-                net::proto::dns::dns_packet _rpkt;
-                net::proto::dns::init_dns_packet(&_rpkt);
                 std::string _idata = data;
-                dns_server_handler(iaddr, _idata, _rpkt);
+                std::string _resp = dns_server_handler( iaddr, std::move(_idata), false );
+                if ( _resp.size() == 0 ) return;
 
                 net::udp::write_to(
                     parent_task::get_task(), 
-                    net::proto::dns::pkt_begin(&_rpkt),
-                    _rpkt.length,
+                    _resp.c_str(),
+                    _resp.size(),
                     (struct sockaddr_in)iaddr
                 );
-
-                net::proto::dns::release_dns_packet(&_rpkt);
             });
         });
     });
@@ -230,12 +306,13 @@ void co_main( int argc, char * argv[] ) {
             _r = _adapter.read_enough(_l);
             if ( _r.first != net::op_done ) return;
 
-            net::proto::dns::dns_packet _rpkt;
-            net::proto::dns::init_dns_packet(&_rpkt);
-            dns_server_handler(net::rawf::socket_peerinfo(this_task::get_task()->id), _r.second, _rpkt);
-
-            _adapter.write(std::string(_rpkt.packet, _rpkt.length + sizeof(uint16_t)));
-            net::proto::dns::release_dns_packet(&_rpkt);
+            std::string _resp = dns_server_handler( 
+                net::rawf::socket_peerinfo(this_task::get_task()->id), 
+                std::move(_r.second), 
+                true
+            );
+            if ( _resp.size() == 0 ) return;
+            _adapter.write( std::move(_resp) );
         });
     });
 
