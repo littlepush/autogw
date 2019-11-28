@@ -79,10 +79,10 @@ void dns_restore_iptables(
 
     ON_DEBUG(
         std::cout << "Saved Iptable Rules: " << std::endl;
-        std::cout << _saved_rules << std::endl;
+        std::cout << _saved_rules.str() << std::endl;
     )
 
-    process *_pres = new process("iptable-restore");
+    process *_pres = new process("iptables-restore");
     ON_DEBUG(
         _pres->stdout = [](std::string&& d) {
             std::cout << d;
