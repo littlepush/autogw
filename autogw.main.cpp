@@ -303,6 +303,9 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     auto _ips = net::proto::dns::ips( &_rpkt );
     if ( _ips.size() > 0 ) {
         for ( auto& ir : _ips ) {
+            ON_DEBUG(
+                std::cout << "will add iptable rule for <" << _d << "> on ip " << ir.ip << std::endl;
+            )
             dns_add_proxy_cache(ir.ip, _qs.second);
         }
     }
