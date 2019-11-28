@@ -75,6 +75,7 @@ void dns_add_proxy_cache( net::ip_t& ip, net::peer_t& socks5 ) {
         _iptable << "-t" << "nat" << "-A" << g_gwname << "-p" << "tcp" << "-d" 
             << ip.str() + "/32" << "-j" << "REDIRECT" << "--to-ports"
             << g_gwport;
+        _iptable.stderr = [](std::string&& d) { std::cerr << d; };
         int _ret = _iptable.run();
         if ( _ret != 0 ) {
             std::cerr << "failed to add new proxy rule for ip: " << ip 
