@@ -109,13 +109,16 @@ void dns_restore_iptables(
                     << "-j REDIRECT --to-ports " << gwport
                     << std::endl;
                 ON_DEBUG(
-                    std::cout << "R: " << _ruless.str();
+                    std::cout << _ruless.str();
                 )
                 _pres->input(_ruless.str());
             }
             _already_in_nat = false;
         }
         if ( _rule == "*nat" ) _already_in_nat = true;
+        ON_DEBUG(
+            std::cout << _rule << std::endl;
+        )
         _pres->input(_rule + "\n");
     }
     _pres->send_eof();
