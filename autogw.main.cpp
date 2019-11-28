@@ -295,8 +295,6 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     _rpkt.length = _r.second.size() - sizeof(uint16_t);
     _rpkt.header = (net::proto::dns::dns_packet_header *)(_ipkt.packet + sizeof(uint16_t));
 
-    std::string _socks5str = _qs.second.str();
-
     // parse the response and update the cache
     _rpkt.header->trans_id = ntohs(_rpkt.header->trans_id);
     _rpkt.header->qdcount = ntohs(_rpkt.header->qdcount);
