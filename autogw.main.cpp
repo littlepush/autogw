@@ -284,6 +284,10 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
         return _r.second;
     }
 
+    ON_DEBUG(
+        std::cout << "domain " << _d << " matchs a filter, will check result" << std::endl;
+    )
+
     net::proto::dns::dns_packet _rpkt;
     _rpkt.packet = &_r.second[0];
     _rpkt.buflen = 0;
