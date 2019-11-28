@@ -213,6 +213,14 @@ void co_main( int argc, char * argv[] ) {
     utils::argparser::set_parser("redis", "r", _redis_info);
     utils::argparser::set_parser("gateway", "g", _gw_info);
     utils::argparser::set_parser("master", "m", _master);
+    ON_DEBUG(
+        utils::argparser::set_parser("enable-conet-trace", [](std::string&&) {
+            net::enable_conet_trace();
+        });
+        utils::argparser::set_parser("enable-cotask-trace", [](std::string&&) {
+            enable_cotask_trace();
+        });
+    )
     g_master = _master;
 
     if ( !utils::argparser::parse(argc, argv) ) {
@@ -354,10 +362,6 @@ void co_main( int argc, char * argv[] ) {
 }
 
 int main( int argc, char * argv[] ) {
-    ON_DEBUG(
-        net::enable_conet_trace();
-    )
-
     // Check if this is client or server or command line tools
     loop::main.do_job(std::bind(&co_main, argc, argv));
     loop::main.run();
