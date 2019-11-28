@@ -14,6 +14,7 @@ using namespace pe;
 #include <conet.h>
 using namespace pe::co;
 
+int g_return = 0;
 // Redis group point
 std::shared_ptr< net::redis::group >            g_rg;
 std::shared_ptr< net::redis::group >            g_cmdrg;
@@ -290,12 +291,13 @@ void co_main( int argc, char * argv[] ) {
     std::string _master = "114.114.114.114:53";
     std::string _initfw;
     std::string _gwname;
+    bool _normal_exit = false;
     utils::argparser::set_parser("redis", "r", _redis_info);
     utils::argparser::set_parser("gw-port", "p", _gw_info);
     utils::argparser::set_parser("master", "m", _master);
     utils::argparser::set_parser("initfw", "f", _initfw);
     utils::argparser::set_parser("gwname", "n", _gwname);
-    utils::argparser::set_parser("help", "h", [](std::string&&) {
+    utils::argparser::set_parser("help", "h", [&_normal_exit](std::string&&) {
         std::cout
             << "Usage: autogw [OPTION]..." << std::endl
             << "Listen on DNS Port(TCP/UDP 53) and connects to a redis server which" << std::endl
@@ -324,9 +326,9 @@ void co_main( int argc, char * argv[] ) {
             << std::endl
             << "Copyright 2015-2019 MeetU Infomation and Technology Inc. All rights reserved." << std::endl
             << "Powered By Push Chen <littlepush@gmail.com>, as a sub project of PE framework." << std::endl;
-        exit(0);
+        _normal_exit = true;
     });
-    utils::argparser::set_parser("version", "v", [](std::string&&) {
+    utils::argparser::set_parser("version", "v", [&_normal_exit](std::string&&) {
         std::cout << "autogw, ";
         #ifdef DEBUG
             std::cout << "Debug Version, ";
@@ -337,7 +339,7 @@ void co_main( int argc, char * argv[] ) {
         std::cout 
             << "Copyright 2015-2019 MeetU Infomation and Technology Inc. All rights reserved." << std::endl
             << "Powered By Push Chen <littlepush@gmail.com>, as a sub project of PE framework." << std::endl;
-        exit(0);
+        _normal_exit = true;
     });
     ON_DEBUG(
         utils::argparser::set_parser("enable-conet-trace", [](std::string&&) {
@@ -350,12 +352,17 @@ void co_main( int argc, char * argv[] ) {
 
     // Do arg parser
     if ( !utils::argparser::parse(argc, argv) ) {
-        exit(1);
+        g_return = 1;
+        return;
     }
+
+    // Just return
+    if ( _normal_exit ) return;
 
     if ( _initfw.size() == 0 || _gwname.size() == 0 ) {
         std::cerr << "missing arguments" << std::endl;
-        exit(2);
+        g_return = 2;
+        return;
     }
 
     // Format the master address
@@ -368,19 +375,22 @@ void co_main( int argc, char * argv[] ) {
     net::SOCKET_T _uso = net::udp::create(net::peer_t("0.0.0.0:53"));
     if ( _uso == INVALIDATE_SOCKET ) {
         std::cerr << "failed to listen on port 53" << std::endl;
-        exit(2);
+        g_return = 3;
+        return;
     }
 
     net::SOCKET_T _tso = net::tcp::create(net::peer_t("0.0.0.0:53"));
     if ( _tso == INVALIDATE_SOCKET ) {
         std::cerr << "failed to listen on port 53" << std::endl;
-        exit(2);
+        g_return = 3;
+        return;
     }
 
     auto _gw = net::tcp_factory::server & net::peer_t(net::ip_t(0), (uint16_t)std::stoi(_gw_info));
     if ( _gw.conn_obj == INVALIDATE_SOCKET ) {
         std::cerr << "failed to listen on " << _gw_info << std::endl;
-        exit(2);
+        g_return = 3;
+        return;
     }
 
     auto _rinfos = utils::split(_redis_info, ",");
@@ -391,7 +401,8 @@ void co_main( int argc, char * argv[] ) {
     }
     if ( _rinfom.find("s") == _rinfom.end() ) {
         std::cerr << "no redis server address" << std::endl;
-        exit(3);
+        g_return = 4;
+        return;
     }
     std::string _saddr = _rinfom["s"];
     if ( _saddr.find(":") == std::string::npos ) {
@@ -410,7 +421,8 @@ void co_main( int argc, char * argv[] ) {
     g_rg = std::make_shared< net::redis::group >(_rsvr, _rpwd, 2);
     if ( !g_rg->lowest_load_connector().connection_test() ) {
         std::cerr << "cannot connect to redis server" << std::endl;
-        exit(4);
+        g_return = 5;
+        return;
     }
     if ( _rdb != 0 ) {
         // Change the database
@@ -512,7 +524,7 @@ int main( int argc, char * argv[] ) {
     // Check if this is client or server or command line tools
     loop::main.do_job(std::bind(&co_main, argc, argv));
     loop::main.run();
-    return 0;
+    return g_return;
 }
 
 // Push Chen
