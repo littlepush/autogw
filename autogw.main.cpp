@@ -177,7 +177,10 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
 
     // Just return the response from master if the domain is not match any query filter
     if ( !_qs.second ) {
-        return _r.second.substr(sizeof(uint16_t));
+        if ( _add_tcp_length ) {
+            return _r.second.substr(sizeof(uint16_t));
+        }
+        return _r.second;
     }
 
     net::proto::dns::dns_packet _rpkt;
