@@ -109,10 +109,21 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     _ipkt.header = (net::proto::dns::dns_packet_header *)(_ipkt.packet);
     _ipkt.dsize = 0;
 
-    net::proto::dns::prepare_for_reading(&_ipkt);
+    _ipkt.header->trans_id = ntohs(_ipkt.header->trans_id);
+    _ipkt.header->qdcount = ntohs(_ipkt.header->qdcount);
+    _ipkt.header->ancount = ntohs(_ipkt.header->ancount);
+    _ipkt.header->nscount = ntohs(_ipkt.header->nscount);
+    _ipkt.header->arcount = ntohs(_ipkt.header->arcount);
+
+    // net::proto::dns::prepare_for_reading(&_ipkt);
     std::string _d = net::proto::dns::domain(&_ipkt);
+
     // Roll back the data
-    net::proto::dns::prepare_for_sending(&_ipkt);
+    _ipkt.header->trans_id = htons(_ipkt.header->trans_id);
+    _ipkt.header->qdcount = htons(_ipkt.header->qdcount);
+    _ipkt.header->ancount = htons(_ipkt.header->ancount);
+    _ipkt.header->nscount = htons(_ipkt.header->nscount);
+    _ipkt.header->arcount = htons(_ipkt.header->arcount);
 
     ON_DEBUG(
         std::cout << "-> " << in << ": " << _d << std::endl;
@@ -161,7 +172,7 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     if ( _r.first != net::op_done ) return std::string("");
 
     ON_DEBUG(
-        std::cout << "get resposne from " << _qs.first << " on domain " << _d << std::endl;
+        std::cout << "get resposne from " << _master << " on domain " << _d << std::endl;
     )
 
     // Just return the response from master if the domain is not match any query filter
@@ -179,7 +190,12 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     std::string _socks5str = _qs.second.str();
 
     // parse the response and update the cache
-    net::proto::dns::prepare_for_reading( &_rpkt );
+    _rpkt.header->trans_id = ntohs(_rpkt.header->trans_id);
+    _rpkt.header->qdcount = ntohs(_rpkt.header->qdcount);
+    _rpkt.header->ancount = ntohs(_rpkt.header->ancount);
+    _rpkt.header->nscount = ntohs(_rpkt.header->nscount);
+    _rpkt.header->arcount = ntohs(_rpkt.header->arcount);
+
     auto _ips = net::proto::dns::ips( &_rpkt );
     if ( _ips.size() > 0 ) {
         for ( auto& ir : _ips ) {
@@ -209,7 +225,12 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
         });
     } while ( false );
 
-    net::proto::dns::prepare_for_sending( &_rpkt );
+    _rpkt.header->trans_id = htons(_rpkt.header->trans_id);
+    _rpkt.header->qdcount = htons(_rpkt.header->qdcount);
+    _rpkt.header->ancount = htons(_rpkt.header->ancount);
+    _rpkt.header->nscount = htons(_rpkt.header->nscount);
+    _rpkt.header->arcount = htons(_rpkt.header->arcount);
+
     return _r.second.substr(sizeof(uint16_t));
 }
 
