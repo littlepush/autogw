@@ -60,6 +60,53 @@ void dns_restore_proxy_cache( ) {
     } while ( _offset != 0 );
 }
 
+void dns_restore_iptables( 
+    const std::string& init_script, 
+    const std::string& nat_name, 
+    const std::string& gwport 
+) {
+    process _init_p(init_script);
+    if ( 0 != _init_p.run() ) return;   // init failed
+
+    // Load now saved iptable rules
+    process _save_p("iptables-save");
+    std::stringstream _saved_rules;
+    _save_p.stdout = [&_saved_rules](std::string&& d) {
+        _saved_rules << d;
+    };
+    _save_p.run();
+
+    process *_pres = new process("iptable-restore");
+    loop::main.do_job([_pres]() {
+        parent_task::guard _pg;
+        _pres->run();
+    });
+
+    std::string _rule;
+    bool _already_in_nat = false;
+    while ( std::getline(_saved_rules, _rule) ) {
+        if ( _already_in_nat && _rule == "COMMIT" ) {
+            for ( auto& pitem : g_proxy_cache ) {
+                std::stringstream _ruless;
+                _ruless 
+                    << "-A " << nat_name << " "
+                    << "-p tcp -m tcp -d " << pitem.first.str() << " "
+                    << "-j REDIRECT --to-port " << gwport
+                    << std::endl;
+                _pres->input(_ruless.str());
+            }
+            _already_in_nat = false;
+        }
+        if ( _rule == "*nat" ) _already_in_nat = true;
+        _pres->input(_rule + "\n");
+    }
+    _pres->send_eof();
+    // Holding until iptables-restore return
+    this_task::holding();
+    delete _pres;
+    std::cout << "restore gateway rules done." << std::endl;
+}
+
 void gw_wait_for_command() {
     loop::main.do_job([]() {
         while ( this_task::get_task()->status != task_status_stopped ) {
@@ -238,12 +285,60 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
 }
 
 void co_main( int argc, char * argv[] ) {
-    std::string _gw_info = "0.0.0.0:4300";
+    std::string _gw_info = "4300";
     std::string _redis_info = "s.127.0.0.1:6379,p.password,db.1";
     std::string _master = "114.114.114.114:53";
+    std::string _initfw;
+    std::string _gwname;
     utils::argparser::set_parser("redis", "r", _redis_info);
-    utils::argparser::set_parser("gateway", "g", _gw_info);
+    utils::argparser::set_parser("gw-port", "p", _gw_info);
     utils::argparser::set_parser("master", "m", _master);
+    utils::argparser::set_parser("initfw", "f", _initfw);
+    utils::argparser::set_parser("gwname", "n", _gwname);
+    utils::argparser::set_parser("help", "h", [](std::string&&) {
+        std::cout
+            << "Usage: autogw [OPTION]..." << std::endl
+            << "Listen on DNS Port(TCP/UDP 53) and connects to a redis server which" << std::endl
+            << "contains the domain query filters and ip proxy rules." << std::endl
+            << "autogw will add new iptable redirect rules according to the dns query" << std::endl
+            << "result. And will use the query filter's socks5 proxy as the redirect tunnel." << std::endl
+            << std::endl
+            << "  -r, --redis               Redis server config string" << std::endl
+            << "  -p, --gw-port             Gateway listening port number, default is 4300" << std::endl
+            << "  -n, --gw-name             Gateway nat chain name" << std::endl
+            << "  -m, --master              The uplevel dns query server, default " << std::endl
+            << "                              is 114.114.114.114, default port number" << std::endl
+            << "                              is 53 if not specified" << std::endl
+            << "  -f, --initfw              Firewall init script" << std::endl
+            << "  -h, --help                Display this message" << std::endl
+            << "  -v, --version             Display version number" << std::endl
+            << "  --enable-conet-trace      In debug version only, display net log" << std::endl
+            << "  --enable-cotask-trace     In debug version only, display task log" << std::endl
+            << std::endl
+            << "Redis Server String Format: " << std::endl
+            << "  <key>.<value>,..." << std::endl
+            << "Key: " << std::endl
+            << " s    server address, <address>[:<port>], default port should be 6379" << std::endl
+            << " p    requirepass" << std::endl
+            << " db   selected index of database" << std::endl
+            << std::endl
+            << "Copyright 2015-2019 MeetU Infomation and Technology Inc. All rights reserved." << std::endl
+            << "Powered By Push Chen <littlepush@gmail.com>, as a sub project of PE framework." << std::endl;
+        exit(0);
+    });
+    utils::argparser::set_parser("version", "v", [](std::string&&) {
+        std::cout << "autogw, ";
+        #ifdef DEBUG
+            std::cout << "Debug Version, ";
+        #else
+            std::cout << "Release Version, ";
+        #endif
+        std::cout << "v" << VERSION << std::endl;
+        std::cout 
+            << "Copyright 2015-2019 MeetU Infomation and Technology Inc. All rights reserved." << std::endl
+            << "Powered By Push Chen <littlepush@gmail.com>, as a sub project of PE framework." << std::endl;
+        exit(0);
+    });
     ON_DEBUG(
         utils::argparser::set_parser("enable-conet-trace", [](std::string&&) {
             net::enable_conet_trace();
@@ -252,11 +347,22 @@ void co_main( int argc, char * argv[] ) {
             enable_cotask_trace();
         });
     )
-    g_master = _master;
 
+    // Do arg parser
     if ( !utils::argparser::parse(argc, argv) ) {
         exit(1);
     }
+
+    if ( _initfw.size() == 0 || _gwname.size() == 0 ) {
+        std::cerr << "missing arguments" << std::endl;
+        exit(2);
+    }
+
+    // Format the master address
+    if ( _master.find(":") == std::string::npos ) {
+        _master += ":53";
+    }
+    g_master = _master;
 
     // Start the manager
     net::SOCKET_T _uso = net::udp::create(net::peer_t("0.0.0.0:53"));
@@ -271,7 +377,7 @@ void co_main( int argc, char * argv[] ) {
         exit(2);
     }
 
-    auto _gw = net::tcp_factory::server & net::peer_t(_gw_info);
+    auto _gw = net::tcp_factory::server & net::peer_t(net::ip_t(0), (uint16_t)std::stoi(_gw_info));
     if ( _gw.conn_obj == INVALIDATE_SOCKET ) {
         std::cerr << "failed to listen on " << _gw_info << std::endl;
         exit(2);
@@ -287,7 +393,11 @@ void co_main( int argc, char * argv[] ) {
         std::cerr << "no redis server address" << std::endl;
         exit(3);
     }
-    net::peer_t _rsvr(_rinfom["s"]);
+    std::string _saddr = _rinfom["s"];
+    if ( _saddr.find(":") == std::string::npos ) {
+        _saddr += ":6379";
+    }
+    net::peer_t _rsvr(_saddr);
     std::string _rpwd;
     if ( _rinfom.find("p") != _rinfom.end() ) {
         _rpwd = _rinfom["p"];
@@ -313,6 +423,7 @@ void co_main( int argc, char * argv[] ) {
 
     dns_restore_query_server();
     dns_restore_proxy_cache();
+    dns_restore_iptables(_initfw, _gwname, _gw_info);
     gw_wait_for_command();
 
     loop::main.do_job(_uso, []() {
