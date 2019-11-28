@@ -165,7 +165,9 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     )
 
     // Just return the response from master if the domain is not match any query filter
-    if ( !_qs.second ) return _r.second;
+    if ( !_qs.second ) {
+        return _r.second.substr(sizeof(uint16_t));
+    }
 
     net::proto::dns::dns_packet _rpkt;
     _rpkt.packet = &_r.second[0];
@@ -208,13 +210,13 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     } while ( false );
 
     net::proto::dns::prepare_for_sending( &_rpkt );
-    return _r.second;
+    return _r.second.substr(sizeof(uint16_t));
 }
 
 void co_main( int argc, char * argv[] ) {
     std::string _gw_info = "0.0.0.0:4300";
     std::string _redis_info = "s.127.0.0.1:6379,p.password,db.1";
-    std::string _master = "114.114.114.114";
+    std::string _master = "114.114.114.114:53";
     utils::argparser::set_parser("redis", "r", _redis_info);
     utils::argparser::set_parser("gateway", "g", _gw_info);
     utils::argparser::set_parser("master", "m", _master);
@@ -325,6 +327,11 @@ void co_main( int argc, char * argv[] ) {
                 true
             );
             if ( _resp.size() == 0 ) return;
+            std::string _ls;
+            _ls.resize(2);
+            uint16_t *_pls = (uint16_t *)&_ls[0];
+            *_pls = net::h2n((uint16_t)_resp.size());
+            _adapter.write( std::move(_ls) );
             _adapter.write( std::move(_resp) );
         });
     });
