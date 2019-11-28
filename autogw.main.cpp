@@ -293,7 +293,7 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     _rpkt.buflen = 0;
     _rpkt.dsize = 0;
     _rpkt.length = _r.second.size() - sizeof(uint16_t);
-    _rpkt.header = (net::proto::dns::dns_packet_header *)(_ipkt.packet + sizeof(uint16_t));
+    _rpkt.header = (net::proto::dns::dns_packet_header *)(_rpkt.packet + sizeof(uint16_t));
 
     // parse the response and update the cache
     _rpkt.header->trans_id = ntohs(_rpkt.header->trans_id);
