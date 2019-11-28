@@ -94,6 +94,9 @@ void dns_restore_iptables(
                     << "-p tcp -m tcp -d " << pitem.first.str() << " "
                     << "-j REDIRECT --to-port " << gwport
                     << std::endl;
+                ON_DEBUG(
+                    std::cout << "R: " << _ruless.str();
+                )
                 _pres->input(_ruless.str());
             }
             _already_in_nat = false;
