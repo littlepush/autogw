@@ -77,10 +77,24 @@ void dns_restore_iptables(
     };
     _save_p.run();
 
+    ON_DEBUG(
+        std::cout << "Saved Iptable Rules: " << std::endl;
+        std::cout << _saved_rules << std::endl;
+    )
+
     process *_pres = new process("iptable-restore");
+    ON_DEBUG(
+        _pres->stdout = [](std::string&& d) {
+            std::cout << d;
+        };
+        _pres->stderr = [](std::string&& d) {
+            std::cerr << d;
+        };
+    )
     loop::main.do_job([_pres]() {
         parent_task::guard _pg;
-        _pres->run();
+        int _ret = _pres->run();
+        std::cout << "iptable-restore return " << _ret << std::endl;
     });
 
     std::string _rule;
