@@ -71,16 +71,23 @@ void dns_add_proxy_cache( net::ip_t& ip, net::peer_t& socks5 ) {
         g_rg->query("HSET", "proxy_cache", ip.str(), socks5.str());
 
         // Dynamically add iptables rule
-        process _iptable("iptables");
-        _iptable << "-t" << "nat" << "-A" << g_gwname << "-p" << "tcp" << "-d" 
-            << ip.str() + "/32" << "-j" << "REDIRECT" << "--to-ports"
-            << g_gwport;
-        _iptable.stderr = [](std::string&& d) { std::cerr << d; };
-        int _ret = _iptable.run();
-        if ( _ret != 0 ) {
-            std::cerr << "failed to add new proxy rule for ip: " << ip 
-                << ", return " << _ret << std::endl;
-        }
+        int _ret = 0;
+        do {
+            process _iptable("iptables");
+            _iptable << "-t" << "nat" << "-A" << g_gwname << "-p" << "tcp" << "-d" 
+                << ip.str() + "/32" << "-j" << "REDIRECT" << "--to-ports"
+                << g_gwport;
+            _iptable.stderr = [](std::string&& d) { std::cerr << d; };
+
+            _ret = _iptable.run();
+            if ( _ret != 0 ) {
+                std::cerr << "failed to add new proxy rule for ip: " << ip 
+                    << ", return " << _ret << std::endl;
+                this_task::sleep(std::chrono::seconds(1));
+            } else {
+                std::cout << "new iptables rule for ip: " << ip << " was added." << std::endl;
+            }
+        } while ( _ret != 0 );
     });
 }
 
