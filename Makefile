@@ -31,9 +31,13 @@ PECO_NT_CFLAGS = $(EX_FLAGS) -lcotask -lssl -lresolv -lpeutils -lconet
 PECO_NT_AUTOGW_CPP_FILES = ./autogw.main.cpp
 PECO_NT_AUTOGW_OBJ_FILES = $(PECO_NT_AUTOGW_CPP_FILES:.cpp=.o)
 
+PECO_LOAD_PAC_CPP_FILES = ./loadpac.cpp
+PECO_LOAD_PAC_OBJ_FILES = $(PECO_LOAD_PAC_CPP_FILES:.cpp=.o)
+
 all : 
 	@mkdir -p bin
 	$(MAKE) autogw 
+	$(MAKE) loadpac
 
 %.o : %.cpp
 	$(CC) $(DEFINES) $(PECO_NT_DEFINES) -c $< -o $@
@@ -41,9 +45,13 @@ all :
 autogw : $(PECO_NT_AUTOGW_OBJ_FILES)
 	$(CC) -o bin/autogw $^ $(PECO_NT_CFLAGS)
 
+loadpac : $(PECO_LOAD_PAC_OBJ_FILES)
+	$(CC) -o bin/loadpac $^ $(PECO_NT_CFLAGS)
+
 install : 
 	@cp -vrf ./bin/autogw /usr/local/bin/
 
 clean :
 	@rm -vrf *.o
 	@rm -vrf bin/autogw
+	@rm -vrf bin/loadpac
