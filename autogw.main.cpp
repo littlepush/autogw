@@ -149,7 +149,8 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     std::shared_ptr< net::netadapter > _ptr_adapter(_pradapter);
     if ( !_ptr_adapter->connect(_master.str()) ) return std::string("");
     if ( _add_tcp_length ) {
-        std::string _ls('\0', sizeof(uint16_t));
+        std::string _ls;
+        _ls.resize(sizeof(uint16_t));
         uint16_t *_pls = (uint16_t *)&_ls[0];
         *_pls = net::h2n((uint16_t)data.size());
         _ptr_adapter->write(std::move(_ls));
