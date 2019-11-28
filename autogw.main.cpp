@@ -72,7 +72,7 @@ void dns_add_proxy_cache( net::ip_t& ip, net::peer_t& socks5 ) {
 
         // Dynamically add iptables rule
         process _iptable("iptables");
-        _iptable << "-A" << g_gwname << "-p" << "tcp" << "-d" 
+        _iptable << "-t" << "nat" << "-A" << g_gwname << "-p" << "tcp" << "-d" 
             << ip.str() + "/32" << "-j" << "REDIRECT" << "--to-ports"
             << g_gwport;
         int _ret = _iptable.run();
@@ -90,7 +90,7 @@ void dns_del_proxy_cache( net::ip_t& ip ) {
     loop::main.do_job([ip]() {
         g_rg->query("HDEL", "proxy_cache", ip.str());
         process _iptable("iptables");
-        _iptable << "-A" << g_gwname << "-p" << "tcp" << "-d"
+        _iptable << "-t" << "nat" << "-A" << g_gwname << "-p" << "tcp" << "-d"
             << ip.str() + "/32" << "-j" << "RETURN";
         _iptable.run();
     });
