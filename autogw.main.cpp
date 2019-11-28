@@ -20,6 +20,8 @@ std::shared_ptr< net::redis::group >            g_rg;
 std::shared_ptr< net::redis::group >            g_cmdrg;
 std::map< net::ip_t, net::peer_t >              g_proxy_cache;
 net::peer_t                                     g_master;
+std::string                                     g_gwname;
+std::string                                     g_gwport;
 
 void dns_restore_query_server( ) {
     int _offset = 0;
@@ -59,6 +61,39 @@ void dns_restore_proxy_cache( ) {
             g_proxy_cache[_targetip] = _proxyserver;
         }
     } while ( _offset != 0 );
+}
+
+void dns_add_proxy_cache( net::ip_t& ip, net::peer_t& socks5 ) {
+    if ( g_proxy_cache.find(ip) != g_proxy_cache.end() ) return;
+    g_proxy_cache[ip] = socks5;
+
+    loop::main.do_job([ip, socks5]() {
+        g_rg->query("HSET", "proxy_cache", ip.str(), socks5.str());
+
+        // Dynamically add iptables rule
+        process _iptable("iptables");
+        _iptable << "-A" << g_gwname << "-p" << "tcp" << "-d" 
+            << ip.str() + "/32" << "-j" << "REDIRECT" << "--to-ports"
+            << g_gwport;
+        int _ret = _iptable.run();
+        if ( _ret != 0 ) {
+            std::cerr << "failed to add new proxy rule for ip: " << ip 
+                << ", return " << _ret << std::endl;
+        }
+    });
+}
+
+void dns_del_proxy_cache( net::ip_t& ip ) {
+    if ( g_proxy_cache.find(ip) == g_proxy_cache.end() ) return;
+    g_proxy_cache.erase(ip);
+
+    loop::main.do_job([ip]() {
+        g_rg->query("HDEL", "proxy_cache", ip.str());
+        process _iptable("iptables");
+        _iptable << "-A" << g_gwname << "-p" << "tcp" << "-d"
+            << ip.str() + "/32" << "-j" << "RETURN";
+        _iptable.run();
+    });
 }
 
 void dns_restore_iptables( 
@@ -156,12 +191,10 @@ void gw_wait_for_command() {
             } else if ( _cmds[0] == "addip" ) {
                 net::ip_t _targetip(_cmds[1]);
                 net::peer_t _socks5(_cmds[2]);
-                g_proxy_cache[_targetip] = _socks5;
-                g_rg->query("HSET", "proxy_cache", _cmds[1], _cmds[2]);
+                dns_add_proxy_cache(_targetip, _socks5);
             } else if ( _cmds[0] == "delip" ) {
                 net::ip_t _targetip(_cmds[1]);
-                g_proxy_cache.erase(_targetip);
-                g_rg->query("HDEL", "proxy_cache", _cmds[1]);
+                dns_del_proxy_cache(_targetip);
             } else {
                 std::cerr << "invalidate command: " << _cmds[0] << std::endl;
             }
@@ -270,12 +303,7 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     auto _ips = net::proto::dns::ips( &_rpkt );
     if ( _ips.size() > 0 ) {
         for ( auto& ir : _ips ) {
-            if ( g_proxy_cache.find(ir.ip) != g_proxy_cache.end() ) continue;
-            g_proxy_cache[ir.ip] = _qs.second;
-            std::string _ipstr = ir.ip.str();
-            loop::main.do_job([_ipstr, _socks5str]() {
-                g_rg->query("HSET", "proxy_cache", _ipstr, _socks5str);
-            });
+            dns_add_proxy_cache(ir.ip, _qs.second);
         }
     }
     auto _cname = net::proto::dns::cname( &_rpkt );
