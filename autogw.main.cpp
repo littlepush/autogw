@@ -489,6 +489,8 @@ void co_main( int argc, char * argv[] ) {
     dns_restore_query_server();
     dns_restore_proxy_cache();
     dns_restore_iptables(_initfw, _gwname, _gw_info);
+    g_gwname = _gwname;
+    g_gwport = _gw_info;
     gw_wait_for_command();
 
     loop::main.do_job(_uso, []() {
