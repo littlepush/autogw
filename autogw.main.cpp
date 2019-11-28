@@ -91,8 +91,8 @@ void dns_restore_iptables(
                 std::stringstream _ruless;
                 _ruless 
                     << "-A " << nat_name << " "
-                    << "-p tcp -m tcp -d " << pitem.first.str() << " "
-                    << "-j REDIRECT --to-port " << gwport
+                    << "-p tcp -d " << pitem.first.str() << "/32 "
+                    << "-j REDIRECT --to-ports " << gwport
                     << std::endl;
                 ON_DEBUG(
                     std::cout << "R: " << _ruless.str();
