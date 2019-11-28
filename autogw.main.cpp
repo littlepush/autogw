@@ -160,6 +160,10 @@ std::string dns_server_handler( net::peer_t in, std::string&& data, bool force_t
     auto _r = _ptr_adapter->read(std::chrono::seconds(3));
     if ( _r.first != net::op_done ) return std::string("");
 
+    ON_DEBUG(
+        std::cout << "get resposne from " << _qs.first << " on domain " << _domain << std::endl;
+    )
+
     // Just return the response from master if the domain is not match any query filter
     if ( !_qs.second ) return _r.second;
 
