@@ -1,4 +1,4 @@
-DEFINES = --std=c++11 -pthread -Werror -DVERSION="\"1.0.1\"" -Wall -fPIC -Og -g -DDEBUG=1
+DEFINES = --std=c++11 -pthread -Werror -DVERSION="\"1.0.1\"" -Wall -fPIC -g -DDEBUG=1
 
 ifeq '$(findstring ;,$(PATH))' ';'
     detected_OS := Windows
