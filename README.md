@@ -35,9 +35,9 @@ Usually, we use autogw to connect two or more different network and provides a t
 
 ## Dependences
 
-* [`PEUtils`][https://github.com/littlepush/PEUtils]
-* [`PECoTask`][https://github.com/littlepush/PECoTask]
-* [`PECoNet`][https://github.com/littlepush/PECoNet]
+* [`PEUtils`](https://github.com/littlepush/PEUtils)
+* [`PECoTask`](https://github.com/littlepush/PECoTask)
+* [`PECoNet`](https://github.com/littlepush/PECoNet)
 
 ## Install
 
