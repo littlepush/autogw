@@ -23,20 +23,11 @@ For Example:
 10. The gateway's iptable will find a rule for the target Google's server, and redirect the connection to autogw's proxy port
 11. autogw then will use the proxy to connect to the target and make a tcp relay between original browser connection and target server.
 
-```sequence
-Browser(Client)->DNS Server(autogw): Query www.google.com
-DNS Server(autogw)->Uplevel DNS Server(8.8.8.8): Redirect use socks5 proxy
-Uplevel DNS Server(8.8.8.8)->DNS Server(autogw): Parse and get A/CNAME records
-Note right of DNS Server(autogw): Create iptable rule
-DNS Server(autogw)->Browser(Client): Result of DNS
-Browser(Client)->Gateway: Connect to Google(172.217.6.36)
-Gateway->autogw: Match iptable rule and redirect to autogw
-autogw->Google.com: Use the proxy to connect
-Google.com->autogw: Normal response
-autogw->Gateway: Normal response
-Gateway->Browser(Client): Normal response
 
-```
+
+![workflow](https://raw.githubusercontent.com/littlepush/autogw/master/workflow.jpg)
+
+
 
 Everything for the client is transparent. It knows nothing.
 
@@ -77,7 +68,7 @@ autogw will use `BLPOP` to monitor the command queue in Redis server.
 ### Add a new Domain Rule
 
 ```
-BRPUSH autogw.command addqs@<domain>@<dns_server>[@<socks5_address>]
+RPUSH autogw.command addqs@<domain>@<dns_server>[@<socks5_address>]
 ```
 
 * `<domain>` can be one of the following:
@@ -91,7 +82,7 @@ BRPUSH autogw.command addqs@<domain>@<dns_server>[@<socks5_address>]
 ### Delete a Domain Rule
 
 ```
-BRPUSH autogw.command delqs@<domain>
+RPUSH autogw.command delqs@<domain>
 ```
 
 The `<domain>` must be the same as when it was added.
@@ -99,7 +90,7 @@ The `<domain>` must be the same as when it was added.
 ### Add an IP Rule
 
 ```
-BRPUSH autogw.command addip@<ip>@<socks5_address>
+RPUSH autogw.command addip@<ip>@<socks5_address>
 ```
 
 Tell autogw to create an iptable rule to redirect a certain IP address, no matter which domain it belongs.
@@ -107,7 +98,7 @@ Tell autogw to create an iptable rule to redirect a certain IP address, no matte
 Delete an IP Rule
 
 ```
-BRPUSH autogw.command delip@<ip>
+RPUSH autogw.command delip@<ip>
 ```
 
 Tell autogw to delete the IP's iptable rule.
