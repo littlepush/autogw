@@ -37,6 +37,9 @@ void dns_restore_query_server( ) {
             std::string _domain = _fs[i].content;
             std::string _fstr = _fs[i + 1].content;
             auto _ss = utils::split(_fstr, "@");
+            if ( _ss[0].find(":") == std::string::npos ) {
+                _ss[0] += ":53";
+            }
             net::peer_t _dsvr(_ss[0]);
             net::peer_t _socks5 = net::peer_t::nan;
             if ( _ss.size() == 2 ) _socks5 = _ss[1];
@@ -182,6 +185,9 @@ void gw_wait_for_command() {
             auto _cmds = utils::split(_cmdstr, "@");
             if ( _cmds[0] == "addqs" ) {
                 std::string _domain = _cmds[1];
+                if ( _cmds[2].find(":") == std::string::npos ) {
+                    _cmds[2] += ":53";
+                }
                 net::peer_t _dsvr(_cmds[2]);
                 std::string _s = _cmds[2];
                 net::peer_t _socks5;

@@ -1,0 +1,51 @@
+#! /bin/bash
+
+echo "1" > /proc/sys/net/ipv4/ip_forward
+
+I_FACE=eth1	# LAN side interface
+O_FACE=eth0	# WAN side interface
+GATEWAY_IP=<My_LAN_Side_IP>
+LAN_MASK=<My_LAN_Side_NetMask>  # 192.168.1.0/24
+CHAIN_NAME=<My_NAT_Chain_Name>
+
+iptables -t nat -F
+iptables -t mangle -F
+iptables -t nat -X
+iptables -F
+iptables -X
+
+iptables -t nat -N $CHAIN_NAME
+
+iptables -P INPUT DROP
+iptables -P FORWARD ACCEPT
+iptables -P OUTPUT ACCEPT
+
+iptables -A INPUT -p icmp -m icmp --icmp-type 8 -j ACCEPT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i $I_FACE -o $O_FACE -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i $I_FACE -o $O_FACE -j ACCEPT
+
+# Open Ports
+#iptables -A INPUT -p tcp -m tcp -s <INTERNAL_ADDRESS> --dport <OPEN_PORT> -j ACCEPT
+
+## Redirect Port
+#iptables -A FORWARD -d <TARGET_IP> -p tcp -m tcp --dport <TARGET_PORT> -j ACCEPT
+#iptables -t nat -A PREROUTING -i $O_FACE -p tcp -m tcp --dport <TARGET_PORT> -j DNAT --to-destination <TARGET_IP>:<TARGET_PORT>
+
+# Create a gateway nat chain
+
+iptables -t nat -A PREROUTING -p tcp -j $CHAIN_NAME
+iptables -t nat -A PREROUTING -p udp -j $CHAIN_NAME
+# ignore root's outgoing traffic
+iptables -t nat -A OUTPUT -m owner --uid-owner root -j RETURN
+iptables -t nat -A OUTPUT -p tcp -j $CHAIN_NAME
+iptables -t nat -A OUTPUT -p udp -j $CHAIN_NAME
+
+iptables -t nat -A POSTROUTING -o $O_FACE -j MASQUERADE
+iptables -t nat -A POSTROUTING -o $I_FACE ! -p esp -j SNAT --to-source $GATEWAY_IP
+# Ignore LAN side connection
+iptables -t nat -A $CHAIN_NAME -d $LAN_MASK -j RETURN
+# Ignore localhost connection
+iptables -t nat -A $CHAIN_NAME -d 127.0.0.1/32 -j RETURN
+
