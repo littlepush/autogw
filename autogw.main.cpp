@@ -411,8 +411,7 @@ void co_main( int argc, char * argv[] ) {
             << "Example: " << std::endl
             << "  redis://mypassword@127.0.0.1/1" << std::endl
             << std::endl
-            << "Copyright 2015-2019 MeetU Infomation and Technology Inc. All rights reserved." << std::endl
-            << "Powered By Push Chen <littlepush@gmail.com>, as a sub project of PE framework." << std::endl;
+            << "Powered By Push Chen <littlepush@gmail.com>, as a sub project of PECo framework." << std::endl;
         _normal_exit = true;
     });
     utils::argparser::set_parser("version", "v", [&_normal_exit](std::string&&) {
