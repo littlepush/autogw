@@ -366,7 +366,7 @@ void co_main( int argc, char * argv[] ) {
             << "autogw will add new iptable redirect rules according to the dns query" << std::endl
             << "result. And will use the query filter's socks5 proxy as the redirect tunnel." << std::endl
             << std::endl
-            << "  -r, --redis               Redis server config string" << std::endl
+            << "  -r, --redis               Redis server url string" << std::endl
             << "  -p, --gw-port             Gateway listening port number, default is 4300" << std::endl
             << "  -n, --gw-name             Gateway nat chain name" << std::endl
             << "  -m, --master              The uplevel dns query server, default " << std::endl
@@ -378,12 +378,10 @@ void co_main( int argc, char * argv[] ) {
             << "  --enable-conet-trace      In debug version only, display net log" << std::endl
             << "  --enable-cotask-trace     In debug version only, display task log" << std::endl
             << std::endl
-            << "Redis Server String Format: " << std::endl
-            << "  <key>.<value>,..." << std::endl
-            << "Key: " << std::endl
-            << " s    server address, <address>[:<port>], default port should be 6379" << std::endl
-            << " p    requirepass" << std::endl
-            << " db   selected index of database" << std::endl
+            << "Redis Server URL String Format: " << std::endl
+            << "  redis://[password@]<server_address>[:port][/dbindex]" << std::endl
+            << "Example: " << std::endl
+            << "  redis://mypassword@127.0.0.1/1" << std::endl
             << std::endl
             << "Copyright 2015-2019 MeetU Infomation and Technology Inc. All rights reserved." << std::endl
             << "Powered By Push Chen <littlepush@gmail.com>, as a sub project of PE framework." << std::endl;
@@ -454,45 +452,13 @@ void co_main( int argc, char * argv[] ) {
         return;
     }
 
-    auto _rinfos = utils::split(_redis_info, ",");
-    std::map< std::string, std::string > _rinfom;
-    for ( auto & i : _rinfos ) {
-        auto _kv = utils::split(i, ".");
-        _rinfom[_kv[0]] = utils::join(_kv.begin() + 1, _kv.end(), ".");
-    }
-    if ( _rinfom.find("s") == _rinfom.end() ) {
-        std::cerr << "no redis server address" << std::endl;
-        g_return = 4;
-        return;
-    }
-    std::string _saddr = _rinfom["s"];
-    if ( _saddr.find(":") == std::string::npos ) {
-        _saddr += ":6379";
-    }
-    net::peer_t _rsvr(_saddr);
-    std::string _rpwd;
-    if ( _rinfom.find("p") != _rinfom.end() ) {
-        _rpwd = _rinfom["p"];
-    }
-    int _rdb = 0;
-    if ( _rinfom.find("db") != _rinfom.end() ) {
-        _rdb = std::stoi(_rinfom["db"]);
-    }
-
-    g_rg = std::make_shared< net::redis::group >(_rsvr, _rpwd, 2);
+    g_rg = std::make_shared< net::redis::group >(_redis_info, 2);
     if ( !g_rg->lowest_load_connector().connection_test() ) {
         std::cerr << "cannot connect to redis server" << std::endl;
         g_return = 5;
         return;
     }
-    if ( _rdb != 0 ) {
-        // Change the database
-        g_rg->query("SELECT", _rdb);
-    }
-    g_cmdrg = std::make_shared< net::redis::group >(_rsvr, _rpwd, 1);
-    if ( _rdb != 0 ) {
-        g_cmdrg->query("SELECT", _rdb);
-    }
+    g_cmdrg = std::make_shared< net::redis::group >(_redis_info, 1);
 
     dns_restore_query_server();
     dns_restore_proxy_cache();
