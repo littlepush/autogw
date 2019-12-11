@@ -423,7 +423,6 @@ void co_main( int argc, char * argv[] ) {
         #endif
         std::cout << "v" << VERSION << std::endl;
         std::cout 
-            << "Copyright 2015-2019 MeetU Infomation and Technology Inc. All rights reserved." << std::endl
             << "Powered By Push Chen <littlepush@gmail.com>, as a sub project of PE framework." << std::endl;
         _normal_exit = true;
     });
