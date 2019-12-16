@@ -44,6 +44,7 @@ std::map< net::ip_t, net::peer_t >              g_proxy_cache;
 net::peer_t                                     g_master;
 std::string                                     g_gwname;
 std::string                                     g_gwport;
+std::map< net::ip_t, bool >                     g_ignore;
 
 void dns_restore_query_server( ) {
     int _offset = 0;
@@ -83,6 +84,7 @@ void dns_restore_proxy_cache( ) {
         for ( size_t i = 0; i < _ps.size(); i += 2 ) {
             net::ip_t _targetip(_ps[i].content);
             net::peer_t _proxyserver(_ps[i + 1].content);
+            if ( g_ignore.find(_targetip) != g_ignore.end() ) continue;
             g_proxy_cache[_targetip] = _proxyserver;
         }
     } while ( _offset != 0 );
@@ -90,6 +92,7 @@ void dns_restore_proxy_cache( ) {
 
 void dns_add_proxy_cache( net::ip_t& ip, net::peer_t& socks5 ) {
     if ( g_proxy_cache.find(ip) != g_proxy_cache.end() ) return;
+    if ( g_ignore.find(ip) != g_ignore.end() ) return;   // Ignore
     g_proxy_cache[ip] = socks5;
 
     loop::main.do_job([ip, socks5]() {
@@ -386,6 +389,16 @@ void co_main( int argc, char * argv[] ) {
     utils::argparser::set_parser("master", "m", _master);
     utils::argparser::set_parser("initfw", "f", _initfw);
     utils::argparser::set_parser("gwname", "n", _gwname);
+    utils::argparser::set_parser("ignore", "i", [&_ignore_ips, &_normal_exit](std::string&& ip) {
+        net::ip_t _ip(ip);
+        if ( !_ip ) {
+            std::err << "Invalidate IP: " << ip << std::endl;
+            g_return = 100;
+            _normal_exit = true;
+            return;
+        }
+        g_ignore[_ip] = true;
+    });
     utils::argparser::set_parser("help", "h", [&_normal_exit](std::string&&) {
         std::cout
             << "Usage: autogw [OPTION]..." << std::endl
@@ -397,6 +410,7 @@ void co_main( int argc, char * argv[] ) {
             << "  -r, --redis               Redis server url string" << std::endl
             << "  -p, --gw-port             Gateway listening port number, default is 4300" << std::endl
             << "  -n, --gw-name             Gateway nat chain name" << std::endl
+            << "  -i, --ignore              Ignore certain IP address, can be repeated" << std::endl
             << "  -m, --master              The uplevel dns query server, default " << std::endl
             << "                              is 114.114.114.114, default port number" << std::endl
             << "                              is 53 if not specified" << std::endl
@@ -552,6 +566,7 @@ void co_main( int argc, char * argv[] ) {
         #endif
 
         if ( !_opeer ) return;
+        if ( g_ignore.find(_opeer.ip) != g_ignore.end() ) return;   // Ignore
 
         // Check the original peer if match any cache
         net::netadapter *_padapter = NULL;

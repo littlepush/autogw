@@ -57,6 +57,7 @@ autogw [OPTION]...
 * `-p, --gw-port`: Gateway redirect port, default is 4300
 * `-n, --gw-name`: NAT chain name
 * `-m, --master`: Uplevel dns query server, default is 114.114.114.114, if not specified a port, will use 53
+* `-i, --ignore`: Ignore the given IP address, can be repeated
 * `-f, --initfw`: Firewall initial script, used to build the basic iptables
 * `--enable-conet-trace`: *only in debug version*, enable log trace of libconet
 * `--enable-cotask-trace`: *only in debug version*, enable log trace of libcotask
