@@ -389,10 +389,10 @@ void co_main( int argc, char * argv[] ) {
     utils::argparser::set_parser("master", "m", _master);
     utils::argparser::set_parser("initfw", "f", _initfw);
     utils::argparser::set_parser("gwname", "n", _gwname);
-    utils::argparser::set_parser("ignore", "i", [&_ignore_ips, &_normal_exit](std::string&& ip) {
+    utils::argparser::set_parser("ignore", "i", [&_normal_exit](std::string&& ip) {
         net::ip_t _ip(ip);
         if ( !_ip ) {
-            std::err << "Invalidate IP: " << ip << std::endl;
+            std::cerr << "Invalidate IP: " << ip << std::endl;
             g_return = 100;
             _normal_exit = true;
             return;
